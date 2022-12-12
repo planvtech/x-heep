@@ -75,6 +75,13 @@ module testharness #(
   logic [core_v_mini_mcu_pkg::NEXT_INT-1:0] intr_vector_ext;
   logic memcopy_intr;
 
+  // External subsystems
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] external_subsystem_powergate_switch;
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] external_subsystem_powergate_switch_ack;
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] external_subsystem_powergate_iso;
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] external_subsystem_rst_n;
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] external_ram_banks_set_retentive;
+
   always_comb begin
     // All interrupt lines set to zero by default
     for (int i = 0; i < core_v_mini_mcu_pkg::NEXT_INT; i++) begin
@@ -133,13 +140,6 @@ module testharness #(
       .gpio_20_io(gpio[20]),
       .gpio_21_io(gpio[21]),
       .gpio_22_io(gpio[22]),
-      .gpio_23_io(gpio[23]),
-      .gpio_24_io(gpio[24]),
-      .gpio_25_io(gpio[25]),
-      .gpio_26_io(gpio[26]),
-      .gpio_27_io(gpio[27]),
-      .gpio_28_io(gpio[28]),
-      .gpio_29_io(gpio[29]),
       .spi_flash_sck_io(spi_flash_sck),
       .spi_flash_cs_0_io(spi_flash_csb[0]),
       .spi_flash_cs_1_io(spi_flash_csb[1]),
@@ -154,6 +154,13 @@ module testharness #(
       .spi_sd_1_io(spi_sd_io[1]),
       .spi_sd_2_io(spi_sd_io[2]),
       .spi_sd_3_io(spi_sd_io[3]),
+      .spi2_cs_0_io(gpio[23]),
+      .spi2_cs_1_io(gpio[24]),
+      .spi2_sck_io(gpio[25]),
+      .spi2_sd_0_io(gpio[26]),
+      .spi2_sd_1_io(gpio[27]),
+      .spi2_sd_2_io(gpio[28]),
+      .spi2_sd_3_io(gpio[29]),
       .i2c_scl_io(gpio[31]),
       .i2c_sda_io(gpio[30]),
       .exit_value_o,
@@ -164,10 +171,11 @@ module testharness #(
       .ext_xbar_slave_resp_i(slave_resp),
       .ext_peripheral_slave_req_o(periph_slave_req),
       .ext_peripheral_slave_resp_i(periph_slave_resp),
-      .external_subsystem_powergate_switch_o(),
-      .external_subsystem_powergate_switch_ack_i('0),
-      .external_subsystem_powergate_iso_o(),
-      .external_subsystem_rst_no()
+      .external_subsystem_powergate_switch_o(external_subsystem_powergate_switch),
+      .external_subsystem_powergate_switch_ack_i(external_subsystem_powergate_switch_ack),
+      .external_subsystem_powergate_iso_o(external_subsystem_powergate_iso),
+      .external_subsystem_rst_no(external_subsystem_rst_n),
+      .external_ram_banks_set_retentive_o(external_ram_banks_set_retentive)
   );
 
   //pretending to be SWITCH CELLs that delay by SWITCH_ACK_LATENCY cycles the ACK signal
@@ -175,22 +183,42 @@ module testharness #(
       tb_cpu_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY+1],
       tb_peripheral_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY+1];
   logic [core_v_mini_mcu_pkg::NUM_BANKS-1:0] tb_memory_subsystem_banks_powergate_switch_ack[SWITCH_ACK_LATENCY+1];
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] tb_external_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY+1];
+  logic delayed_tb_cpu_subsystem_powergate_switch_ack;
+  logic delayed_tb_peripheral_subsystem_powergate_switch_ack;
+  logic [core_v_mini_mcu_pkg::NUM_BANKS-1:0] delayed_tb_memory_subsystem_banks_powergate_switch_ack;
+  logic [core_v_mini_mcu_pkg::EXTERNAL_DOMAINS-1:0] delayed_tb_external_subsystem_powergate_switch_ack;
 
-  always_ff @(posedge clk_i) begin
+  always_ff @(negedge clk_i) begin
     tb_cpu_subsystem_powergate_switch_ack[0] <= x_heep_system_i.cpu_subsystem_powergate_switch;
     tb_peripheral_subsystem_powergate_switch_ack[0] <= x_heep_system_i.peripheral_subsystem_powergate_switch;
     tb_memory_subsystem_banks_powergate_switch_ack[0] <= x_heep_system_i.memory_subsystem_banks_powergate_switch;
+    tb_external_subsystem_powergate_switch_ack[0] <= external_subsystem_powergate_switch;
     for (int i = 0; i < SWITCH_ACK_LATENCY; i++) begin
       tb_memory_subsystem_banks_powergate_switch_ack[i+1] <= tb_memory_subsystem_banks_powergate_switch_ack[i];
       tb_cpu_subsystem_powergate_switch_ack[i+1] <= tb_cpu_subsystem_powergate_switch_ack[i];
       tb_peripheral_subsystem_powergate_switch_ack[i+1] <= tb_peripheral_subsystem_powergate_switch_ack[i];
+      tb_external_subsystem_powergate_switch_ack[i+1] <= tb_external_subsystem_powergate_switch_ack[i];
     end
   end
 
+  assign delayed_tb_cpu_subsystem_powergate_switch_ack = tb_cpu_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY];
+  assign delayed_tb_peripheral_subsystem_powergate_switch_ack = tb_peripheral_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY];
+  assign delayed_tb_memory_subsystem_banks_powergate_switch_ack = tb_memory_subsystem_banks_powergate_switch_ack[SWITCH_ACK_LATENCY];
+  assign delayed_tb_external_subsystem_powergate_switch_ack = tb_external_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY];
+
   always_comb begin
-    x_heep_system_i.cpu_subsystem_powergate_switch_ack = tb_cpu_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY];
-    x_heep_system_i.peripheral_subsystem_powergate_switch_ack = tb_peripheral_subsystem_powergate_switch_ack[SWITCH_ACK_LATENCY];
-    x_heep_system_i.memory_subsystem_banks_powergate_switch_ack = tb_memory_subsystem_banks_powergate_switch_ack[SWITCH_ACK_LATENCY];
+`ifndef VERILATOR
+    force x_heep_system_i.core_v_mini_mcu_i.cpu_subsystem_powergate_switch_ack_i = delayed_tb_cpu_subsystem_powergate_switch_ack;
+    force x_heep_system_i.core_v_mini_mcu_i.peripheral_subsystem_powergate_switch_ack_i = delayed_tb_peripheral_subsystem_powergate_switch_ack;
+    force x_heep_system_i.core_v_mini_mcu_i.memory_subsystem_banks_powergate_switch_ack_i = delayed_tb_memory_subsystem_banks_powergate_switch_ack;
+    force external_subsystem_powergate_switch_ack = delayed_tb_external_subsystem_powergate_switch_ack;
+`else
+    x_heep_system_i.cpu_subsystem_powergate_switch_ack = delayed_tb_cpu_subsystem_powergate_switch_ack;
+    x_heep_system_i.peripheral_subsystem_powergate_switch_ack = delayed_tb_peripheral_subsystem_powergate_switch_ack;
+    x_heep_system_i.memory_subsystem_banks_powergate_switch_ack = delayed_tb_memory_subsystem_banks_powergate_switch_ack;
+    external_subsystem_powergate_switch_ack = delayed_tb_external_subsystem_powergate_switch_ack;
+`endif
   end
 
   uartdpi #(
